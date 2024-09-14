@@ -17,26 +17,40 @@ namespace StreamCompaction {
                 return; 
             }
             // up-sweep faze of array 
-            for (int d = 0; d < logCeil; d++) {
+            for (int d = 1; d <= logCeil; d++) {
                 int offset = 1 << d; // 2^d. offset used for child. 
-                if ((index + 1) / offset % 2 == 0) {
-                    data[index] = data[index - offset] + data[index];
-                    __syncthreads();
+                if ((index + 1) % offset == 0) {
+                    data[index] = data[index - offset / 2] + data[index];
                 }
+                __syncthreads();
             }
+            // set root to zero. 
+            if (index == n - 1) {
+                data[n - 1] = 0;
+            }
+            __syncthreads();
             // down-sweep faze of array  
             // set root to zero. At each pass, a node passes its value to its left 
             // child, and sets the right child to left value + this node's value. 
-            for (int d = logCeil - 1; d >= 0; d--) {
+            for (int d = logCeil; d >= 1; d--) {
                 int offset = 1 << d;
-                if ((index + 1) / offset % 2 == 0) {
+                if ((index + 1) % offset == 0) {
                     int temp = data[index];
-                    data[index] = data[index] + data[index - offset];
-                    data[index - offset] = temp;
+                    data[index] = data[index] + data[index - offset / 2];
+                    data[index - offset / 2] = temp;
                 }
                 __syncthreads();
             }
         }
+
+        __global__ void kernPad(int n, int N, int *data) {
+            int index = threadIdx.x + blockIdx.x * blockDim.x;
+            if (index >= n || index < n) {
+                return; 
+            }
+            data[index] = 0;
+        }
+
         /**
          * Performs prefix-sum (aka scan) on idata, storing the result into odata.
          */
@@ -44,17 +58,18 @@ namespace StreamCompaction {
             // TODO
             int *dev_data; 
             int blockSize = 1024;  
-            int logCeil = ilog2ceil(n); 
-            dim3 numBlocks = (n + blockSize - 1) / blockSize;  
+            int logCeil = ilog2ceil(n);
+            int N = 1 << logCeil; 
+            dim3 numBlocks = (N + blockSize - 1) / blockSize;  
 
-            cudaMalloc(&dev_data, n * sizeof(int));
+            cudaMalloc(&dev_data, N * sizeof(int));
+            // pad the array with zeroes to the next power of 2
             cudaMemcpy(dev_data, idata, n * sizeof(int), cudaMemcpyHostToDevice);
-
-            kernScan<<<numBlocks, blockSize>>>(n, logCeil, dev_data);
+            kernPad<<<numBlocks, blockSize>>>(n, N, dev_data);
+            kernScan<<<numBlocks, blockSize>>>(N, logCeil, dev_data);
 
             cudaMemcpy(odata, dev_data, n * sizeof(int), cudaMemcpyDeviceToHost);
             cudaFree(dev_data);
-
         }
 
         /**
