@@ -43,10 +43,16 @@ namespace StreamCompaction {
             }
         }
 
+        /**
+         * Pad the array with zeroes to the next power of 2. 
+         * @param n The number of elements in the original array.
+         * @param N The next power of 2.
+         * @param data The array to pad.
+         */
         __global__ void kernPad(int n, int N, int *data) {
             int index = threadIdx.x + blockIdx.x * blockDim.x;
-            if (index >= n || index < n) {
-                return; 
+            if (index >= N || index < n) {
+                return;
             }
             data[index] = 0;
         }
