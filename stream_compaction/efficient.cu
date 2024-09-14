@@ -6,11 +6,19 @@
 namespace StreamCompaction {
     namespace Efficient {
         using StreamCompaction::Common::PerformanceTimer;
+        using StreamCompaction::Common::kernMapToBoolean;
+        using StreamCompaction::Common::kernScatter;
         PerformanceTimer& timer()
         {
             static PerformanceTimer timer;
             return timer;
         }
+        /**
+         * Perform the scan on the array. 
+         * @param n The number of elements in the array, which is 1 << logCeil
+         * @param logCeil The log base 2 of the number of elements in the array.
+         * @param data The array to scan.
+         */
         __global__ void kernScan(int n, int logCeil, int *data) {
             int index = threadIdx.x + blockIdx.x * blockDim.x;
             if (index >= n) {
@@ -102,18 +110,25 @@ namespace StreamCompaction {
             cudaMalloc(&dev_odata, n * sizeof(int));
             cudaMemcpy(dev_data, idata, n * sizeof(int), cudaMemcpyHostToDevice);
             
-            StreamCompaction::Common::kernMapToBoolean<<<numBlocks, blockSize>>>(n, dev_bools, dev_data);
-            StreamCompaction::Common::kernScatter<<<numBlocks, blockSize>>>(n, dev_odata, dev_data, dev_bools, dev_indices);
+            kernMapToBoolean<<<numBlocks, blockSize>>>(n, dev_bools, dev_data);
+            kernScatter<<<numBlocks, blockSize>>>(n, dev_odata, dev_data, dev_bools, dev_indices);
 
             cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToHost);
-
+            
+            // copy dev_indices to host
+            int *indices = new int[n];
+            cudaMemcpy(indices, dev_indices, n * sizeof(int), cudaMemcpyDeviceToHost);
+            //grab last index for total elements 
+            int total_elements = idata[n-1] != 0 ? indices[n - 1] + 1 : indices[n - 1]; //exclusive scan so add 1
+            //free indices array 
+            delete[] indices;
             cudaFree(dev_bools);
             cudaFree(dev_indices);
             cudaFree(dev_data);
             cudaFree(dev_odata);
             
             timer().endGpuTimer();
-            return -1;
+            return total_elements;
         }
     }
 }
