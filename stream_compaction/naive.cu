@@ -18,7 +18,7 @@ namespace StreamCompaction {
             int index = threadIdx.x + blockIdx.x * blockDim.x;
             if (index < n) {
                 if (index >= pow(2, d)) {
-                    odata[index] = idata[index - pow(2, d-1)] + idata[index];
+                    odata[index] = idata[index - (int) pow(2, d)] + idata[index];
                 } else {
                     odata[index] = idata[index];
                 }
@@ -38,12 +38,12 @@ namespace StreamCompaction {
             cudaMalloc((void**)&dev_odata, n * sizeof(int));
             cudaMemcpy(dev_idata, idata, n * sizeof(int), cudaMemcpyHostToDevice);
             
-            for (int d = 1; d <= ilog2ceil(n); d++) {
+            for (int d = 0; d < ilog2ceil(n); d++) {
                 naiveScanKernel<<<fullBlocksPerGrid, blockSize>>>(n, d, dev_odata, dev_idata);
-                swap(dev_idata, dev_odata);
+                std::swap(dev_idata, dev_odata);
             }
             
-            cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToHost);
+            cudaMemcpy(odata, dev_idata, n * sizeof(int), cudaMemcpyDeviceToHost);
             cudaFree(dev_idata);
             cudaFree(dev_odata);
 
