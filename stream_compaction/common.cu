@@ -41,5 +41,16 @@ namespace StreamCompaction {
             }
         }
 
+        void inclusive_to_exclusive_scan(int* arr, int size) {
+            if (arr == nullptr || size <= 0) return;
+
+            int prev = 0;
+            for (int i = 0; i < size; i++) {
+                int temp = arr[i];
+                arr[i] = prev;
+                prev = temp;
+            }
+        }
+
     }
 }
