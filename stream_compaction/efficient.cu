@@ -97,22 +97,24 @@ namespace StreamCompaction {
          */
         int compact(int n, int *odata, const int *idata) {
             timer().startGpuTimer();
+            int N = 1 << ilog2ceil(n);
             
             int *dev_bools, *dev_indices, *dev_data, *dev_odata; 
             int blockSize = 1024; 
-            dim3 numBlocks = (n + blockSize - 1) / blockSize; 
+            dim3 numBlocks = (N + blockSize - 1) / blockSize; 
 
-            scan(n, odata, idata);
+            cudaMalloc(&dev_bools, N * sizeof(int));
+            cudaMalloc(&dev_indices, N * sizeof(int));
+            cudaMalloc(&dev_data, N * sizeof(int));
+            cudaMalloc(&dev_odata, N * sizeof(int));
+            cudaMemcpy(dev_data, idata, N * sizeof(int), cudaMemcpyHostToDevice);
 
-            cudaMalloc(&dev_bools, n * sizeof(int));
-            cudaMalloc(&dev_indices, n * sizeof(int));
-            cudaMalloc(&dev_data, n * sizeof(int));
-            cudaMalloc(&dev_odata, n * sizeof(int));
-            cudaMemcpy(dev_data, idata, n * sizeof(int), cudaMemcpyHostToDevice);
-            
+            kernPad<<<numBlocks, blockSize>>>(n, N, dev_data);
             kernMapToBoolean<<<numBlocks, blockSize>>>(n, dev_bools, dev_data);
+            cudaMemcpy(dev_indices, dev_bools, N * sizeof(int), cudaMemcpyDeviceToDevice);
+            kernScan<<<numBlocks, blockSize>>>(N, logCeil, dev_indices);
+            
             kernScatter<<<numBlocks, blockSize>>>(n, dev_odata, dev_data, dev_bools, dev_indices);
-
             cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToHost);
             
             // copy dev_indices to host
