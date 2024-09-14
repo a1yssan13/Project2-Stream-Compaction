@@ -97,10 +97,11 @@ namespace StreamCompaction {
          */
         int compact(int n, int *odata, const int *idata) {
             timer().startGpuTimer();
-            int N = 1 << ilog2ceil(n);
+            int logCeil = ilog2ceil(n); 
+            int N = 1 << logCeil;
             
             int *dev_bools, *dev_indices, *dev_data, *dev_odata; 
-            int blockSize = 1024; 
+            int blockSize = 256; 
             dim3 numBlocks = (N + blockSize - 1) / blockSize; 
 
             cudaMalloc(&dev_bools, N * sizeof(int));
@@ -110,18 +111,18 @@ namespace StreamCompaction {
             cudaMemcpy(dev_data, idata, N * sizeof(int), cudaMemcpyHostToDevice);
 
             kernPad<<<numBlocks, blockSize>>>(n, N, dev_data);
-            kernMapToBoolean<<<numBlocks, blockSize>>>(n, dev_bools, dev_data);
+            kernMapToBoolean<<<numBlocks, blockSize>>>(N, dev_bools, dev_data);
             cudaMemcpy(dev_indices, dev_bools, N * sizeof(int), cudaMemcpyDeviceToDevice);
             kernScan<<<numBlocks, blockSize>>>(N, logCeil, dev_indices);
             
-            kernScatter<<<numBlocks, blockSize>>>(n, dev_odata, dev_data, dev_bools, dev_indices);
-            cudaMemcpy(odata, dev_odata, n * sizeof(int), cudaMemcpyDeviceToHost);
+            kernScatter<<<numBlocks, blockSize>>>(N, dev_odata, dev_data, dev_bools, dev_indices);
+            cudaMemcpy(odata, dev_odata, N * sizeof(int), cudaMemcpyDeviceToHost);
             
             // copy dev_indices to host
-            int *indices = new int[n];
-            cudaMemcpy(indices, dev_indices, n * sizeof(int), cudaMemcpyDeviceToHost);
+            int *indices = new int[N];
+            cudaMemcpy(indices, dev_indices, N * sizeof(int), cudaMemcpyDeviceToHost);
             //grab last index for total elements 
-            int total_elements = idata[n-1] != 0 ? indices[n - 1] + 1 : indices[n - 1]; //exclusive scan so add 1
+            int total_elements = idata[N - 1] != 0 ? indices[N - 1] + 1 : indices[N - 1]; //exclusive scan so add 1
             //free indices array 
             delete[] indices;
             cudaFree(dev_bools);
